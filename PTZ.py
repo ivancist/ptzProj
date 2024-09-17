@@ -15,6 +15,8 @@
 import time
 import requests
 import cv2
+from ultralytics import YOLO
+import math
 
 class PTZ:
     def __init__(self, ip):
@@ -23,8 +25,8 @@ class PTZ:
         self.resolution = 1080
         self.width = 1920
         self.height = 1080
-        # self.videoCapture = cv2.VideoCapture('rtsp://'+self.ip+'/axis-media/media.amp')
-        self.videoCapture = cv2.VideoCapture(0)
+        self.videoCapture = cv2.VideoCapture('rtsp://'+self.ip+'/axis-media/media.amp')
+        # self.videoCapture = cv2.VideoCapture(0)
 
     def zoom(self, zoom):
         print("Zoom called")
@@ -57,7 +59,7 @@ class PTZ:
         r = requests.get(url)
         print("Center request sent")
 
-    def continuous_move(self, pan_speed, tilt_speed, object_detection=False):
+    def continuous_move(self, pan_speed, tilt_speed, object_detection=False, follow=False):
         print("Continuous Move called")
         url = f'http://{self.ip}/axis-cgi/com/ptz.cgi?camera={self.camera}&continuouspantiltmove={pan_speed},{tilt_speed}'
         # GET request to the camera
@@ -65,12 +67,73 @@ class PTZ:
         print("Continuous Move request sent")
 
         if object_detection:
-            obj = self.detect_object()
-            if obj is not None:
-                self.continuous_move(0, 0)
+            self.detect_object(follow)
 
-    def detect_object(self):
+    def detect_object(self, follow):
         print("Object Detection Started")
+        model = YOLO('yolov10n.pt')
+        classNames = ["person", "bicycle", "car", "motorbike", "aeroplane", "bus", "train", "truck", "boat",
+              "traffic light", "fire hydrant", "stop sign", "parking meter", "bench", "bird", "cat",
+              "dog", "horse", "sheep", "cow", "elephant", "bear", "zebra", "giraffe", "backpack", "umbrella",
+              "handbag", "tie", "suitcase", "frisbee", "skis", "snowboard", "sports ball", "kite", "baseball bat",
+              "baseball glove", "skateboard", "surfboard", "tennis racket", "bottle", "wine glass", "cup",
+              "fork", "knife", "spoon", "bowl", "banana", "apple", "sandwich", "orange", "broccoli",
+              "carrot", "hot dog", "pizza", "donut", "cake", "chair", "sofa", "pottedplant", "bed",
+              "diningtable", "toilet", "tvmonitor", "laptop", "mouse", "remote", "keyboard", "cell phone",
+              "microwave", "oven", "toaster", "sink", "refrigerator", "book", "clock", "vase", "scissors",
+              "teddy bear", "hair drier", "toothbrush"
+              ]
+        allowedClasses = ["person", "car", "motorbike", "bus", "truck", "bicycle", "dog"]
+
+        if not self.videoCapture.isOpened():
+            print("Error opening video stream or file")
+            return
+        
+        while True:
+            ret, frame = self.videoCapture.read()
+            results = model(frame, stream=True, verbose=False)
+            detected_objects = []
+            for r in results:
+                boxes = r.boxes
+                for box in boxes:
+                    confidence = math.ceil(box.conf[0]*100)/100
+                    cls = int(box.cls[0])
+
+                    if confidence < 0.5 or classNames[cls] not in allowedClasses:
+                        continue
+
+                    x1, y1, x2, y2 = box.xyxy[0]
+                    x1, y1, x2, y2 = int(x1), int(y1), int(x2), int(y2)
+                    cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
+
+                    obj_center_x = (x1 + x2) / 2
+                    obj_center_y = (y1 + y2) / 2
+                    dx = obj_center_x - self.width / 2
+                    dy = obj_center_y - self.height / 2
+
+                    org = [x1, y1]
+                    font = cv2.FONT_HERSHEY_SIMPLEX
+                    fontScale = 1
+                    color = (0, 255, 0)
+                    thickness = 2
+                    cv2.putText(frame, f'{confidence} {classNames[cls]}', org, font, fontScale, color, thickness, cv2.LINE_AA)
+
+                    detected_objects.append([confidence, cls, dx, dy])
+            
+            if len(detected_objects) > 0:
+                # Get the object with the highest confidence
+                detected_objects.sort(key=lambda x: x[0], reverse=True)
+                self.center(detected_objects[0][2], detected_objects[0][3])
+
+
+            cv2.imshow('frame', frame)
+            if cv2.waitKey(1) & 0xFF == ord('q'):
+                break
+        cv2.destroyAllWindows()
+        cv2.waitKey(1)
+        print("Object Detection Ended")
+
+
 
     def wait_and_stop(self, time_to_wait):
         time.sleep(time_to_wait)

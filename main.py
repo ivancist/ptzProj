@@ -5,6 +5,7 @@ import time
 def thread_function(ptz):
     print("Thread started")
     time.sleep(2)
+    # ptz.continuous_move(1,1,True)
     r,w,h = ptz.get_resolution()
     ptz.move(-91.22,-2.05)
     time.sleep(3)
@@ -18,5 +19,6 @@ def thread_function(ptz):
 
 ptz = PTZ.PTZ('192.168.0.90')
 print("Start")
-t = Thread(target=thread_function,args=(ptz,)).start()
-ptz.display()
+# t = Thread(target=thread_function,args=(ptz,)).start()
+# ptz.display()
+ptz.continuous_move(1,1,True)
