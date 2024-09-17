@@ -14,6 +14,7 @@
 
 import time
 import requests
+import cv2
 
 class PTZ:
     def __init__(self, ip):
@@ -22,6 +23,8 @@ class PTZ:
         self.resolution = 1080
         self.width = 1920
         self.height = 1080
+        # self.videoCapture = cv2.VideoCapture('rtsp://'+self.ip+'/axis-media/media.amp')
+        self.videoCapture = cv2.VideoCapture(0)
 
     def zoom(self, zoom):
         print("Zoom called")
@@ -54,12 +57,20 @@ class PTZ:
         r = requests.get(url)
         print("Center request sent")
 
-    def continuous_move(self, pan_speed, tilt_speed):
+    def continuous_move(self, pan_speed, tilt_speed, object_detection=False):
         print("Continuous Move called")
         url = f'http://{self.ip}/axis-cgi/com/ptz.cgi?camera={self.camera}&continuouspantiltmove={pan_speed},{tilt_speed}'
         # GET request to the camera
         r = requests.get(url)
         print("Continuous Move request sent")
+
+        if object_detection:
+            obj = self.detect_object()
+            if obj is not None:
+                self.continuous_move(0, 0)
+
+    def detect_object(self):
+        print("Object Detection Started")
 
     def wait_and_stop(self, time_to_wait):
         time.sleep(time_to_wait)
@@ -124,15 +135,16 @@ class PTZ:
         # GET request to the camera
         r = requests.get(url)
         print("Goto Preset request sent")
+
     def display(self):
-        import cv2
-        cap = cv2.VideoCapture('rtsp://'+self.ip+'/axis-media/media.amp')
+        print("Display started")
         while True:
-            ret, frame = cap.read()
+            ret, frame = self.videoCapture.read()
             if not ret:
                 break
             cv2.imshow('frame', frame)
             if cv2.waitKey(1) & 0xFF == ord('q'):
                 break
-        cap.release()
         cv2.destroyAllWindows()
+        cv2.waitKey(1)
+        print("Display ended")
